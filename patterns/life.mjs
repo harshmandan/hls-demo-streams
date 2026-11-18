@@ -10,7 +10,10 @@ const RULES = [
 	['2x2', 'B36/S125', 0.3],
 	['Amoeba', 'B357/S1358', 0.3]
 ];
-const CELL_SIZES = [2, 4, 8];
+// Cells under 5 px are too fine for the bitrate cap and turn to mush. Sizes must divide 360 and 640.
+const CELL_SIZES = [5, 8, 10];
+// The grid steps 8 times a second. A new grid on all 24 frames costs too many bits.
+const STEPS_PER_SECOND = 8;
 
 export default {
 	name: 'life',
@@ -25,9 +28,9 @@ export default {
 			title: `Life: ${name}`,
 			params: { rule, cell, alive: alive.hex, dead: dead.hex },
 			source:
-				`life=s=${video.w / cell}x${video.h / cell}:r=${video.fps}:rule=${rule}:ratio=${ratio}:seed=${seed}` +
+				`life=s=${video.w / cell}x${video.h / cell}:r=${STEPS_PER_SECOND}:rule=${rule}:ratio=${ratio}:seed=${seed}` +
 				`:mold=${mold}:life_color=${alive.hex}:death_color=${dead.hex}:mold_color=${alive.hex},` +
-				`scale=${video.w}:${video.h}:flags=neighbor`
+				`scale=${video.w}:${video.h}:flags=neighbor,fps=${video.fps}`
 		};
 	}
 };
