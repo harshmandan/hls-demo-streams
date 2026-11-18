@@ -1,0 +1,16 @@
+{
+	"name": "hls-demo-streams",
+	"version": "1.0.0",
+	"description": "Generated HLS test streams with a static JSON API, hosted on GitHub Pages.",
+	"private": true,
+	"type": "module",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20.11"
+	},
+	"scripts": {
+		"build": "node generate.mjs",
+		"build:site": "node generate.mjs --reuse",
+		"preview": "python3 -m http.server 8080 --directory dist"
+	}
+}

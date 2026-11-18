@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>HLS demo streams</title>
+		<meta name="description" content="Free generated HLS test streams with a static JSON API. They do not go dead." />
+		<style>
+			:root {
+				color-scheme: dark;
+				--bg: #0d0e12;
+				--panel: #16181f;
+				--line: #272a35;
+				--text: #e8e9ee;
+				--dim: #9a9eae;
+				--accent: #7cf0b5;
+			}
+			* { box-sizing: border-box; }
+			body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+			main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+			h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -0.02em; }
+			h2 { margin: 40px 0 12px; font-size: 18px; }
+			p { margin: 0 0 12px; color: var(--dim); max-width: 60ch; }
+			a { color: var(--accent); }
+			code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+			.api { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+			.api div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 10px 14px; background: var(--panel); }
+			.api div + div { border-top: 1px solid var(--line); }
+			.api code { overflow-wrap: anywhere; }
+			.api span { color: var(--dim); }
+			.bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+			button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+			button:hover { border-color: var(--dim); }
+			button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #06130c; }
+			.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+			figure { margin: 0; }
+			video { display: block; width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; cursor: pointer; }
+			figcaption { padding-top: 6px; font-size: 12px; color: var(--dim); }
+			figcaption b { display: block; color: var(--text); font-weight: 600; }
+			#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--accent); color: #06130c; padding: 8px 16px; border-radius: 999px; font-weight: 600; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+			#toast.show { opacity: 1; }
+			@media (max-width: 600px) { .api div { grid-template-columns: 1fr; gap: 2px; } }
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>HLS demo streams</h1>
+			<p id="summary">Loading…</p>
+			<p>
+				Short generated HLS clips for testing video players. Built from code on every deploy, so the links stay alive.
+				<a href="https://github.com/harshmandan/hls-demo-streams">Source and contributing guide</a>.
+			</p>
+
+			<h2>API</h2>
+			<p>Plain JSON files. No keys, no rate limits, open to any origin.</p>
+			<div class="api" id="api"></div>
+
+			<h2>Streams</h2>
+			<div class="bar" id="filters"></div>
+			<div class="grid" id="grid"></div>
+		</main>
+		<div id="toast">URL copied</div>
+
+		<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"></script>
+		<script>
+			const grid = document.getElementById('grid');
+			const filters = document.getElementById('filters');
+			const toast = document.getElementById('toast');
+			const live = new Map();
+			let info;
+			let pattern = null;
+
+			// Only clips on screen get a player. A hundred at once would stall the tab.
+			const watcher = new IntersectionObserver((entries) => {
+				for (const { target: video, isIntersecting } of entries) {
+					if (isIntersecting && !live.has(video)) {
+						if (window.Hls && Hls.isSupported()) {
+							const hls = new Hls();
+							hls.loadSource(video.dataset.src);
+							hls.attachMedia(video);
+							live.set(video, hls);
+						} else {
+							video.src = video.dataset.src;
+							live.set(video, null);
+						}
+						video.play().catch(() => {});
+					} else if (!isIntersecting && live.has(video)) {
+						live.get(video)?.destroy();
+						live.delete(video);
+						video.removeAttribute('src');
+						video.load();
+					}
+				}
+			}, { rootMargin: '200px' });
+
+			function show(streams) {
+				for (const [video, hls] of live) { hls?.destroy(); watcher.unobserve(video); }
+				live.clear();
+				grid.replaceChildren();
+				for (const s of streams) {
+					const fig = document.createElement('figure');
+					const video = Object.assign(document.createElement('video'), { muted: true, loop: true, autoplay: true, playsInline: true, title: 'Click to copy the stream URL' });
+					video.dataset.src = s.path;
+					video.addEventListener('click', async () => {
+						await navigator.clipboard.writeText(s.url);
+						toast.classList.add('show');
+						setTimeout(() => toast.classList.remove('show'), 1200);
+					});
+					const cap = document.createElement('figcaption');
+					const name = document.createElement('b');
+					name.textContent = s.title;
+					cap.append(name, `${s.id} · ${Math.round(s.bytes / 1024)} KB`);
+					fig.append(video, cap);
+					grid.append(fig);
+					watcher.observe(video);
+				}
+			}
+
+			async function load(file) {
+				const data = await (await fetch(file)).json();
+				show(data.streams);
+			}
+
+			function chip(label, pressed, onClick) {
+				const b = document.createElement('button');
+				b.textContent = label;
+				b.setAttribute('aria-pressed', pressed);
+				b.addEventListener('click', onClick);
+				return b;
+			}
+
+			function drawFilters() {
+				const pick = (name) => () => {
+					pattern = name;
+					drawFilters();
+					load(name ? `api/patterns/${name}.json` : 'api/streams.json');
+				};
+				filters.replaceChildren(
+					chip('All', pattern === null, pick(null)),
+					...info.patterns.map((name) => chip(name, pattern === name, pick(name))),
+					chip('Shuffle', false, () => {
+						const n = 1 + Math.floor(Math.random() * info.shuffles);
+						load(pattern ? `api/random/${pattern}/${n}.json` : `api/random/${n}.json`);
+					})
+				);
+			}
+
+			(async () => {
+				info = await (await fetch('api/index.json')).json();
+				const v = info.video;
+				document.getElementById('summary').textContent =
+					`${info.count} clips · ${v.width}x${v.height} · ${v.duration} s · ${v.fps} fps · no audio`;
+
+				const notes = {
+					streams: 'Every stream.',
+					stream: 'One stream by id.',
+					patterns: 'The pattern names and counts.',
+					pattern: 'Every stream of one pattern.',
+					random: `All streams, shuffled. n is 1 to ${info.shuffles}.`,
+					randomByPattern: `One pattern, shuffled. n is 1 to ${info.shuffles}.`
+				};
+				const api = document.getElementById('api');
+				for (const [key, url] of Object.entries({ index: new URL('api/index.json', location.href).href, ...info.endpoints })) {
+					const row = document.createElement('div');
+					const code = document.createElement('code');
+					if (url.includes('{')) code.textContent = url;
+					else code.append(Object.assign(document.createElement('a'), { href: url, textContent: url }));
+					const note = document.createElement('span');
+					note.textContent = notes[key] ?? 'This list of endpoints.';
+					row.append(code, note);
+					api.append(row);
+				}
+
+				drawFilters();
+				load('api/streams.json');
+			})();
+		</script>
+	</body>
+</html>
